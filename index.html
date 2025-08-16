@@ -258,8 +258,8 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>📱 QR Scanner Spreadsheet</h1>
-            <p>Scan QR codes and instantly update your data</p>
+            <h1>🎓 Student QR Scanner</h1>
+            <p>Scan QR codes to track students, grades, and teachers</p>
         </div>
         
         <div class="main-content">
@@ -279,31 +279,31 @@
                 </div>
                 
                 <div class="add-row-form">
-                    <input type="text" id="manualId" placeholder="ID">
-                    <input type="text" id="manualName" placeholder="Name">
-                    <input type="text" id="manualData" placeholder="Data">
-                    <button id="addRowBtn" class="btn btn-primary">Add Row</button>
+                    <input type="text" id="manualName" placeholder="Student Name">
+                    <input type="text" id="manualGrade" placeholder="Grade">
+                    <input type="text" id="manualTeacher" placeholder="Teacher Name">
+                    <button id="addRowBtn" class="btn btn-primary">Add Student</button>
                 </div>
             </div>
             
             <div class="spreadsheet-section">
-                <h2>📊 Scanned Data</h2>
+                <h2>📋 Student Records</h2>
                 <div class="table-container">
                     <table>
                         <thead>
                             <tr>
-                                <th>ID</th>
                                 <th>Name</th>
-                                <th>QR Data</th>
+                                <th>Grade</th>
+                                <th>Teacher Name</th>
                                 <th>Timestamp</th>
                                 <th>Action</th>
                             </tr>
                         </thead>
                         <tbody id="dataTable">
                             <tr>
-                                <td>001</td>
-                                <td>Sample Item</td>
-                                <td><span class="qr-data">sample-qr-data</span></td>
+                                <td>John Smith</td>
+                                <td>Grade 5</td>
+                                <td>Ms. Johnson</td>
                                 <td><span class="timestamp">2024-01-01 12:00:00</span></td>
                                 <td><button onclick="deleteRow(this)" class="btn btn-secondary" style="padding: 5px 10px; font-size: 0.8rem;">Delete</button></td>
                             </tr>
@@ -331,14 +331,14 @@
             status.className = `status ${type}`;
         }
 
-        function addRowToTable(id, name, qrData, timestamp = null) {
+        function addRowToTable(name, grade, teacherName, timestamp = null) {
             const row = document.createElement('tr');
             const now = timestamp || new Date().toLocaleString();
             
             row.innerHTML = `
-                <td>${id}</td>
                 <td>${name}</td>
-                <td><span class="qr-data">${qrData}</span></td>
+                <td>${grade}</td>
+                <td>${teacherName}</td>
                 <td><span class="timestamp">${now}</span></td>
                 <td><button onclick="deleteRow(this)" class="btn btn-secondary" style="padding: 5px 10px; font-size: 0.8rem;">Delete</button></td>
             `;
@@ -370,26 +370,32 @@
         }
 
         function processQRCode(result) {
-            rowCounter++;
             const qrData = result;
             
             // Try to parse JSON data or use raw string
-            let id = `QR${rowCounter.toString().padStart(3, '0')}`;
-            let name = 'Scanned Item';
-            let data = qrData;
+            let name = 'Unknown Student';
+            let grade = 'Unknown';
+            let teacherName = 'Unknown Teacher';
             
             try {
                 const parsed = JSON.parse(qrData);
-                if (parsed.id) id = parsed.id;
                 if (parsed.name) name = parsed.name;
-                if (parsed.data) data = parsed.data;
+                if (parsed.grade) grade = parsed.grade;
+                if (parsed.teacher || parsed.teacherName) teacherName = parsed.teacher || parsed.teacherName;
             } catch (e) {
-                // Use raw QR data if not JSON
-                data = qrData;
+                // If not JSON, try to parse comma-separated values
+                const parts = qrData.split(',');
+                if (parts.length >= 3) {
+                    name = parts[0].trim();
+                    grade = parts[1].trim();
+                    teacherName = parts[2].trim();
+                } else if (parts.length >= 1) {
+                    name = parts[0].trim();
+                }
             }
             
-            addRowToTable(id, name, data);
-            updateStatus(`✅ QR Code scanned successfully! Added: ${id}`, 'success');
+            addRowToTable(name, grade, teacherName);
+            updateStatus(`✅ Student added successfully! ${name}`, 'success');
             
             // Brief pause before resuming scanning
             setTimeout(() => {
@@ -442,19 +448,23 @@
         }
 
         function addManualRow() {
-            const id = document.getElementById('manualId').value || `MAN${rowCounter.toString().padStart(3, '0')}`;
-            const name = document.getElementById('manualName').value || 'Manual Entry';
-            const data = document.getElementById('manualData').value || 'No data';
+            const name = document.getElementById('manualName').value || 'Unknown Student';
+            const grade = document.getElementById('manualGrade').value || 'Unknown';
+            const teacherName = document.getElementById('manualTeacher').value || 'Unknown Teacher';
             
-            addRowToTable(id, name, data);
+            if (!document.getElementById('manualName').value) {
+                updateStatus('❌ Please enter at least a student name', 'error');
+                return;
+            }
+            
+            addRowToTable(name, grade, teacherName);
             
             // Clear form
-            document.getElementById('manualId').value = '';
             document.getElementById('manualName').value = '';
-            document.getElementById('manualData').value = '';
+            document.getElementById('manualGrade').value = '';
+            document.getElementById('manualTeacher').value = '';
             
-            rowCounter++;
-            updateStatus('✅ Manual row added successfully!', 'success');
+            updateStatus('✅ Student added successfully!', 'success');
         }
 
         // Event listeners
@@ -465,9 +475,9 @@
         // Handle Enter key in manual form
         document.addEventListener('keypress', (e) => {
             if (e.key === 'Enter' && (
-                e.target.id === 'manualId' || 
                 e.target.id === 'manualName' || 
-                e.target.id === 'manualData'
+                e.target.id === 'manualGrade' || 
+                e.target.id === 'manualTeacher'
             )) {
                 addManualRow();
             }
