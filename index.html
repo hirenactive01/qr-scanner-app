@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QR Scanner Spreadsheet</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qr-scanner/1.4.2/qr-scanner.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/googleapis/45.0.0/gapi.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -236,7 +237,49 @@
             border-color: #4facfe;
         }
         
-        @media (max-width: 768px) {
+        .google-setup {
+            background: linear-gradient(45deg, #ff9a9e, #fecfef);
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        
+        .google-setup h3 {
+            margin-bottom: 10px;
+        }
+        
+        .config-form {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .config-form input {
+            padding: 10px;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
+        
+        .sync-status {
+            padding: 10px;
+            border-radius: 8px;
+            margin-top: 10px;
+            font-weight: 600;
+            text-align: center;
+        }
+        
+        .sync-status.connected {
+            background: linear-gradient(45deg, #56ab2f, #a8e6cf);
+            color: white;
+        }
+        
+        .sync-status.disconnected {
+            background: linear-gradient(45deg, #ff416c, #ff4b2b);
+            color: white;
+        }
             .main-content {
                 grid-template-columns: 1fr;
             }
@@ -264,6 +307,19 @@
         
         <div class="main-content">
             <div class="scanner-section">
+                <div class="google-setup">
+                    <h3>📊 Google Sheets Integration</h3>
+                    <div id="syncStatus" class="sync-status disconnected">
+                        Not connected to Google Sheets
+                    </div>
+                    <div class="config-form">
+                        <input type="text" id="apiKey" placeholder="Google API Key">
+                        <input type="text" id="spreadsheetId" placeholder="Google Spreadsheet ID">
+                        <input type="text" id="sheetName" placeholder="Sheet Name (default: Sheet1)" value="Sheet1">
+                        <button id="connectBtn" class="btn btn-primary">Connect to Google Sheets</button>
+                    </div>
+                </div>
+                
                 <div class="camera-container">
                     <video id="video" playsinline></video>
                     <div class="camera-overlay"></div>
@@ -318,6 +374,12 @@
         let qrScanner = null;
         let isScanning = false;
         let rowCounter = 1;
+        
+        // Google Sheets Integration
+        let isGoogleSheetsConnected = false;
+        let apiKey = '';
+        let spreadsheetId = '';
+        let sheetName = 'Sheet1';
 
         const video = document.getElementById('video');
         const startBtn = document.getElementById('startBtn');
@@ -325,16 +387,108 @@
         const status = document.getElementById('status');
         const dataTable = document.getElementById('dataTable');
         const addRowBtn = document.getElementById('addRowBtn');
+        const connectBtn = document.getElementById('connectBtn');
+        const syncStatus = document.getElementById('syncStatus');
+
+        // Google Sheets API Functions
+        async function connectToGoogleSheets() {
+            apiKey = document.getElementById('apiKey').value;
+            spreadsheetId = document.getElementById('spreadsheetId').value;
+            sheetName = document.getElementById('sheetName').value || 'Sheet1';
+            
+            if (!apiKey || !spreadsheetId) {
+                updateStatus('❌ Please enter API Key and Spreadsheet ID', 'error');
+                return;
+            }
+            
+            try {
+                // Test the connection
+                const testUrl = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A1:D1?key=${apiKey}`;
+                const response = await fetch(testUrl);
+                
+                if (response.ok) {
+                    isGoogleSheetsConnected = true;
+                    syncStatus.textContent = '✅ Connected to Google Sheets';
+                    syncStatus.className = 'sync-status connected';
+                    updateStatus('✅ Successfully connected to Google Sheets!', 'success');
+                    
+                    // Initialize headers if sheet is empty
+                    await initializeSheetHeaders();
+                } else {
+                    throw new Error('Failed to connect to Google Sheets');
+                }
+            } catch (error) {
+                console.error('Google Sheets connection error:', error);
+                updateStatus('❌ Failed to connect to Google Sheets. Check your credentials.', 'error');
+                isGoogleSheetsConnected = false;
+                syncStatus.textContent = '❌ Connection failed';
+                syncStatus.className = 'sync-status disconnected';
+            }
+        }
+        
+        async function initializeSheetHeaders() {
+            try {
+                const headers = [['Name', 'Grade', 'Teacher Name', 'Timestamp']];
+                const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A1:D1?valueInputOption=RAW&key=${apiKey}`;
+                
+                await fetch(url, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        values: headers
+                    })
+                });
+            } catch (error) {
+                console.error('Error initializing headers:', error);
+            }
+        }
+        
+        async function addToGoogleSheets(name, grade, teacherName, timestamp) {
+            if (!isGoogleSheetsConnected) return;
+            
+            try {
+                const values = [[name, grade, teacherName, timestamp]];
+                const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${sheetName}!A:D:append?valueInputOption=RAW&key=${apiKey}`;
+                
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        values: values
+                    })
+                });
+                
+                if (response.ok) {
+                    console.log('Successfully added to Google Sheets');
+                    syncStatus.textContent = '✅ Synced to Google Sheets';
+                } else {
+                    throw new Error('Failed to add to Google Sheets');
+                }
+            } catch (error) {
+                console.error('Error adding to Google Sheets:', error);
+                syncStatus.textContent = '❌ Sync failed';
+                setTimeout(() => {
+                    if (isGoogleSheetsConnected) {
+                        syncStatus.textContent = '✅ Connected to Google Sheets';
+                    }
+                }, 3000);
+            }
+        }
 
         function updateStatus(message, type = 'info') {
             status.textContent = message;
             status.className = `status ${type}`;
         }
 
-        function addRowToTable(name, grade, teacherName, timestamp = null) {
-            const row = document.createElement('tr');
+        async function addRowToTable(name, grade, teacherName, timestamp = null) {
             const now = timestamp || new Date().toLocaleString();
             
+            // Add to local table
+            const row = document.createElement('tr');
             row.innerHTML = `
                 <td>${name}</td>
                 <td>${grade}</td>
@@ -356,6 +510,9 @@
             
             // Scroll to the new row
             row.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            
+            // Add to Google Sheets if connected
+            await addToGoogleSheets(name, grade, teacherName, now);
         }
 
         function deleteRow(button) {
@@ -369,7 +526,7 @@
             }, 300);
         }
 
-        function processQRCode(result) {
+        async function processQRCode(result) {
             const qrData = result;
             
             // Try to parse JSON data or use raw string
@@ -394,7 +551,7 @@
                 }
             }
             
-            addRowToTable(name, grade, teacherName);
+            await addRowToTable(name, grade, teacherName);
             updateStatus(`✅ Student added successfully! ${name}`, 'success');
             
             // Brief pause before resuming scanning
@@ -447,7 +604,7 @@
             }
         }
 
-        function addManualRow() {
+        async function addManualRow() {
             const name = document.getElementById('manualName').value || 'Unknown Student';
             const grade = document.getElementById('manualGrade').value || 'Unknown';
             const teacherName = document.getElementById('manualTeacher').value || 'Unknown Teacher';
@@ -457,7 +614,7 @@
                 return;
             }
             
-            addRowToTable(name, grade, teacherName);
+            await addRowToTable(name, grade, teacherName);
             
             // Clear form
             document.getElementById('manualName').value = '';
@@ -471,6 +628,7 @@
         startBtn.addEventListener('click', startScanner);
         stopBtn.addEventListener('click', stopScanner);
         addRowBtn.addEventListener('click', addManualRow);
+        connectBtn.addEventListener('click', connectToGoogleSheets);
 
         // Handle Enter key in manual form
         document.addEventListener('keypress', (e) => {
